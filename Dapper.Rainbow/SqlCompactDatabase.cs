@@ -5,11 +5,11 @@ using System.Linq;
 
 namespace Dapper.Rainbow
 {
-    public abstract class SqlCompactDatabase<TDatabase> : Database<TDatabase>, IDisposable where TDatabase : Database<TDatabase>, new()
+    public abstract class SqlCompactDatabase<TDatabase> : SqlDatabase<TDatabase>, IDisposable where TDatabase : SqlDatabase<TDatabase>, new()
     {
-        public class SqlCompactTable<T> : Table<T>
+        public class SqlCompactTable<T> : SqlDatabaseTable<T>
         {
-            public SqlCompactTable(Database<TDatabase> database, string likelyTableName)
+            public SqlCompactTable(SqlDatabase<TDatabase> database, string likelyTableName)
                 : base(database, likelyTableName)
             {
             }
@@ -25,7 +25,7 @@ namespace Dapper.Rainbow
                 List<string> paramNames = GetParamNames(o);
                 paramNames.Remove("Id");
 
-                string cols = string.Join(",", paramNames);
+                string cols = string.Join(",", paramNames.Select(QuoteIdentifier));
                 string cols_params = string.Join(",", paramNames.Select(p => "@" + p));
 
                 var sql = "insert " + TableName + " (" + cols + ") values (" + cols_params + ")";
@@ -35,6 +35,16 @@ namespace Dapper.Rainbow
                 }
 
                 return (int)database.Query<decimal>("SELECT @@IDENTITY AS LastInsertedId").Single();
+            }
+
+            protected override string PrependNoCount(string sql)
+            {
+                return sql;
+            }
+
+            protected virtual string AppendIdentitySelect(string sql)
+            {
+                return sql;
             }
         }
 

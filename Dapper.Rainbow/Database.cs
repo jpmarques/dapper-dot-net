@@ -22,9 +22,9 @@ namespace Dapper
     /// A container for a database, assumes all the tables have an Id column named Id
     /// </summary>
     /// <typeparam name="TDatabase"></typeparam>
-    public abstract partial class Database<TDatabase> : IDisposable where TDatabase : Database<TDatabase>, new()
+    public abstract class Database<TDatabase> : IDisposable where TDatabase : Database<TDatabase>, new()
     {
-        public partial class Table<T, TId>
+        public class Table<T, TId>
         {
             internal Database<TDatabase> database;
             internal string tableName;
@@ -56,9 +56,10 @@ namespace Dapper
                 List<string> paramNames = GetParamNames(o);
                 paramNames.Remove("Id");
 
-                string cols = string.Join(",", paramNames);
+                string cols = string.Join(",", paramNames.Select(QuoteIdentifier));
                 string cols_params = string.Join(",", paramNames.Select(p => "@" + p));
-                var sql = "set nocount on insert " + TableName + " (" + cols + ") values (" + cols_params + ") select cast(scope_identity() as int)";
+                var sql = "insert " + TableName + " (" + cols + ") values (" + cols_params + ")";
+                sql = AppendIdentitySelect(PrependNoCount(sql));
 
                 return database.Query<int?>(sql, o).Single();
             }
@@ -75,7 +76,7 @@ namespace Dapper
 
                 var builder = new StringBuilder();
                 builder.Append("update ").Append(TableName).Append(" set ");
-                builder.AppendLine(string.Join(",", paramNames.Where(n => n != "Id").Select(p => p + "= @" + p)));
+                builder.AppendLine(string.Join(",", paramNames.Where(n => n != "Id").Select(p => QuoteIdentifier(p) + "= @" + p)));
                 builder.Append("where Id = @Id");
 
                 DynamicParameters parameters = new DynamicParameters(data);
@@ -102,6 +103,24 @@ namespace Dapper
             public T Get(TId id)
             {
                 return database.Query<T>("select * from " + TableName + " where Id = @id", new { id }).FirstOrDefault();
+            }
+
+            public IEnumerable<T> Get(dynamic data)
+            {
+                List<string> paramNames = GetParamNames((object)data);
+
+                var builder = new StringBuilder();
+                builder.Append("select * from ").Append(TableName);
+
+                if (paramNames.Count > 0)
+                {
+                    builder.Append(" where ");
+                    builder.AppendLine(string.Join(" AND ", paramNames.Select(p => QuoteIdentifier(p) + "= @" + p)));
+                }
+
+                DynamicParameters parameters = new DynamicParameters(data);
+
+                return database.Query<T>(builder.ToString(), parameters);
             }
 
             public virtual T First()
@@ -139,6 +158,21 @@ namespace Dapper
                     paramNameCache[o.GetType()] = paramNames;
                 }
                 return paramNames;
+            }
+
+            protected virtual string PrependNoCount(string sql)
+            {
+                return "set nocount on " + sql;
+            }
+
+            protected virtual string AppendIdentitySelect(string sql)
+            {
+                return sql + " select cast(scope_identity() as int)";
+            }
+
+            protected virtual string QuoteIdentifier(string name)
+            {
+                return name;
             }
         }
 
@@ -324,7 +358,6 @@ namespace Dapper
         {
             return SqlMapper.QueryMultiple(connection, sql, param, transaction, commandTimeout, commandType);
         }
-
 
         public void Dispose()
         {
