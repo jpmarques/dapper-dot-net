@@ -105,24 +105,6 @@ namespace Dapper
                 return database.Query<T>("select * from " + TableName + " where Id = @id", new { id }).FirstOrDefault();
             }
 
-            public IEnumerable<T> Get(dynamic data)
-            {
-                List<string> paramNames = GetParamNames((object)data);
-
-                var builder = new StringBuilder();
-                builder.Append("select * from ").Append(TableName);
-
-                if (paramNames.Count > 0)
-                {
-                    builder.Append(" where ");
-                    builder.AppendLine(string.Join(" AND ", paramNames.Select(p => QuoteIdentifier(p) + "= @" + p)));
-                }
-
-                DynamicParameters parameters = new DynamicParameters(data);
-
-                return database.Query<T>(builder.ToString(), parameters);
-            }
-
             public virtual T First()
             {
                 return database.Query<T>("select top 1 * from " + TableName).FirstOrDefault();
